@@ -21,7 +21,7 @@ El instalador NSIS se genera en `release/`.
 
 ## Actualizaciones de Windows
 
-Las versiones instaladas buscan actualizaciones al iniciar y desde **Ajustes → Actualizaciones de DIAL**. Cuando una versión está lista, la aplicación permite reiniciar e instalarla sin borrar formularios, respuestas ni adjuntos locales.
+Las versiones instaladas buscan actualizaciones al iniciar y desde **Ajustes → Actualizaciones de DIAL**. La tarjeta muestra el repositorio y enlaza a sus Releases. Cuando una versión está lista, la aplicación permite reiniciar e instalarla sin borrar formularios, respuestas ni adjuntos locales.
 
 Las publicaciones se alojan como GitHub Releases en `estebanico10/dial-desktop`. Para crear una versión nueva, actualiza `version` en `package.json`, genera una etiqueta `v<version>` y súbela al repositorio. GitHub Actions compila el instalador y publica el manifiesto y los paquetes que usa el actualizador. Las compilaciones locales no publican nada.
 

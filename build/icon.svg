@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="dial-lime" x1="112" y1="100" x2="394" y2="405" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E7FFAA"/>
+      <stop offset="1" stop-color="#B9E956"/>
+    </linearGradient>
+    <radialGradient id="dial-bg" cx="0" cy="0" r="1" gradientTransform="matrix(0 512 -512 0 256 0)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17232A"/>
+      <stop offset="1" stop-color="#0B1117"/>
+    </radialGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="132" fill="url(#dial-bg)"/>
+  <rect x="17.5" y="17.5" width="477" height="477" rx="130.5" stroke="#34434A" stroke-opacity=".62" stroke-width="3"/>
+  <circle cx="256" cy="256" r="157" stroke="#2A3940" stroke-width="28"/>
+  <path d="M145 145a157 157 0 1 0 222 0" stroke="url(#dial-lime)" stroke-linecap="round" stroke-width="30"/>
+  <path d="m145 108 22 22m89-53v31m89 0-22 22" stroke="#D5FA78" stroke-linecap="round" stroke-width="13"/>
+  <path d="m256 256 98-98" stroke="#E8F2D1" stroke-linecap="round" stroke-width="25"/>
+  <circle cx="354" cy="158" r="19" fill="#D5FA78"/>
+  <circle cx="256" cy="256" r="31" fill="#0B1117" stroke="#D5FA78" stroke-width="13"/>
+</svg>

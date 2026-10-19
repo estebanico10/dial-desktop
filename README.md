@@ -1,63 +1,77 @@
 # DIAL para Windows
 
-DIAL es una aplicación de escritorio local desarrollada dentro del código comunitario de Tangerine. Reúne conversión de medios y documentos, herramientas rápidas, un editor local de formularios y captura de respuestas offline.
+**Archivos, medios y formularios en un espacio de trabajo local.** DIAL reúne herramientas cotidianas en una aplicación de escritorio: trabaja con tus archivos en este equipo, organiza tareas por lotes y guarda formularios y respuestas sin exigir una cuenta.
 
-## Desarrollo
+[Descargar la última versión](https://github.com/estebanico10/dial-desktop/releases/latest) · [Ver todas las versiones](https://github.com/estebanico10/dial-desktop/releases) · [Informar un problema](https://github.com/estebanico10/dial-desktop/issues)
 
-Necesitas Node.js 22 o posterior y Windows x64.
+![Pantalla de inicio de DIAL para Windows](docs/screenshots/inicio-dial.jpg)
+
+*Captura de la aplicación para Windows, versión 0.1.2. La captura no contiene datos personales.*
+
+![Ajustes de DIAL con su canal de actualizaciones de GitHub](docs/screenshots/actualizaciones-dial.jpg)
+
+*Ajustes muestra el canal oficial de DIAL y el control para buscar una actualización.*
+
+## Qué puedes hacer
+
+### Convertir y preparar archivos
+
+- Convertir imágenes entre PNG, JPEG, WebP, AVIF y TIFF, o exportarlas a PDF; redimensionar, girar, recortar y ajustar color.
+- Crear collages de 2 a 20 imágenes con columnas, separación, tamaño de cuadros y fondo configurables.
+- Convertir audio y video con FFmpeg incluido: cambiar formato o velocidad, recortar, normalizar, ajustar volumen, aplicar fundidos, quitar audio, capturar fotogramas y dividir o unir clips compatibles.
+- Organizar, unir o dividir PDF. El organizador muestra miniaturas para seleccionar y reordenar páginas antes de exportar.
+- Convertir CSV ↔ XLSX, DOCX → HTML, TXT ↔ Markdown y SRT ↔ VTT; crear o extraer archivos ZIP.
+- Procesar varios archivos en una cola local, consultar el historial y volver a intentar trabajos interrumpidos con sus ajustes.
+
+Las herramientas disponibles dependen del tipo de archivo. No se ofrecen los 275 pares de conversión anunciados por el producto de referencia.
+
+### Formularios y respuestas sin conexión
+
+- Diseñar formularios locales con campos de texto, número, opciones, sí/no, fecha y adjuntos.
+- Mostrar preguntas condicionales; las respuestas exportadas incluyen los campos que estaban visibles.
+- Guardar formularios, respuestas y adjuntos en este equipo, y exportar respuestas a CSV o XLSX.
+
+### Acceso rápido en Windows
+
+- Abrir el modo rápido con **Ctrl + Shift + D**, o elegir archivos y carpetas desde la aplicación.
+- Arrastrar y soltar, analizar hasta 5.000 archivos y ver un resumen por tipo.
+- Crear ZIP conservando las rutas, comprimir medios compatibles, abrir las herramientas completas o revelar un resultado en el Explorador.
+- Usar el menú contextual **Analizar con DIAL** para abrir archivos o carpetas con la aplicación.
+
+## Descargas y actualizaciones
+
+La versión publicada se distribuye en [GitHub Releases](https://github.com/estebanico10/dial-desktop/releases). En Windows, abre **Ajustes → Actualizaciones de DIAL** para consultar el canal oficial o buscar una versión. La app también comprueba el canal al iniciar; si descarga una actualización, permite reiniciar e instalarla conservando los datos locales.
+
+El canal configurado apunta a `estebanico10/dial-desktop`. La Release 0.1.2 y su feed están publicados; la instalación actual 0.1.2 muestra que está al día. **Aún falta validar una actualización real desde una instalación anterior a una versión nueva.**
+
+## Privacidad y estado de la integración
+
+- Las conversiones se ejecutan en este equipo; DIAL no sube los archivos a un servicio de conversión web.
+- Formularios, respuestas y adjuntos se guardan bajo `%APPDATA%/dial-desktop/DIAL`.
+- La conexión con un servidor se puede configurar, pero la réplica con el protocolo de Tangerine todavía no está implementada. El botón de sincronización indica que la integración está pendiente y no envía las respuestas.
+- El envío directo a Blip también está pendiente.
+
+DIAL ofrece herramientas locales relacionadas con Tangerine, pero **no incluye Tangerine completo**: no inicia ni empaqueta el servidor ni CouchDB, y su editor local no es el editor Angular original.
+
+## Instalar y desarrollar
+
+La descarga para usuarios está en [la página de la última Release](https://github.com/estebanico10/dial-desktop/releases/latest). DIAL está dirigido a Windows x64.
+
+Para ejecutar desde el código fuente se requiere Node.js 22 o posterior:
 
 ```powershell
 npm install
 npm run dev
 ```
 
-## Crear el instalador
+Para crear un instalador local de Windows:
 
 ```powershell
 npm run dist:win
 ```
 
-El instalador NSIS se genera en `release/`.
-
-## Actualizaciones de Windows
-
-Las versiones instaladas buscan actualizaciones al iniciar y desde **Ajustes → Actualizaciones de DIAL**. La tarjeta muestra el repositorio y enlaza a sus Releases. Cuando una versión está lista, la aplicación permite reiniciar e instalarla sin borrar formularios, respuestas ni adjuntos locales.
-
-Las publicaciones se alojan como GitHub Releases en `estebanico10/dial-desktop`. Para crear una versión nueva, actualiza `version` en `package.json`, genera una etiqueta `v<version>` y súbela al repositorio. GitHub Actions compila el instalador y publica el manifiesto y los paquetes que usa el actualizador. Las compilaciones locales no publican nada.
-
-## Capacidades activas
-
-- Conversión de imágenes con Sharp, incluyendo salida PDF; PNG, JPEG, WebP, AVIF y TIFF.
-- Crear collage PNG de 2 a 20 imágenes, con columnas, tamaño de cada cuadro, separación y color de fondo configurables.
-- Conversión y edición básica de audio/video con FFmpeg distribuido dentro de la aplicación.
-- Recorte y cambio de velocidad de audio; normalización y conversión a mono.
-- Ajuste de brillo, contraste y saturación por lote; ocultación de áreas con bloque opaco, con coordenadas en píxeles.
-- Control de volumen, fundido de entrada/salida y escritura de metadatos básicos de audio y video.
-- Recorte de audio/video con duración detectada, controles de inicio y fin, vista de forma de onda para audio y fotograma de referencia para video.
-- Captura de fotogramas de video como PNG; recorte del encuadre, quitar audio, recortar duración, cambiar velocidad, dividir en segmentos y unir videos compatibles.
-- Redimensionar, recortar por píxeles y girar imágenes; exportar copias sin metadatos EXIF.
-- Conversión CSV ↔ XLSX, DOCX → HTML y TXT ↔ Markdown.
-- Conversión SRT ↔ VTT, giro y organización de páginas PDF, unión/división de PDF, creación y extracción de ZIP.
-- Organizador de PDF con miniaturas locales: seleccionar, excluir y reordenar páginas antes de exportar.
-- Cola e historial local recuperable: los trabajos interrumpidos se pueden reintentar con sus ajustes; compara el tamaño original y el resultado cuando ambos son archivos.
-- Editor de formularios local con preguntas condicionales; las respuestas solo incluyen campos visibles, y los adjuntos conservan también el original.
-- Preferencias locales, selección de carpeta de salida y exportación CSV o XLSX de respuestas.
-- Modo rápido superpuesto con `Ctrl+Shift+D` (alternador), botones para elegir archivos o carpetas, arrastrar y soltar, análisis local hasta 5.000 archivos y resumen por tipo.
-- Menú contextual de Windows “Analizar con DIAL” para archivos y carpetas; al instalar, rutas pasan a la instancia activa o inician DIAL.
-- Acciones rápidas para crear ZIP conservando las rutas de la carpeta, comprimir medios compatibles, abrir herramientas completas y revelar el resultado en el Explorador.
-
-El menú muestra únicamente familias de salida con una ruta implementada. Las herramientas aparecen según los archivos compatibles. No hay soporte para los 275 pares de conversión anunciados por el producto de referencia.
-
-## Integración de Tangerine pendiente
-
-La fuente Tangerine incluida en el repositorio requiere su servidor y CouchDB en contenedores. El shell DIAL no inicia ni empaqueta esos servicios. El editor y recolector de esta versión son locales de DIAL y no cargan el editor Angular original. Las respuestas quedan guardadas localmente; aunque se pueden guardar los datos de conexión, la réplica con el protocolo de Tangerine aún no está implementada y el botón de sincronización lo comunica sin enviar los datos.
-
-## Privacidad y datos
-
-La conversión se ejecuta localmente. Formularios, respuestas y adjuntos se guardan bajo `%APPDATA%/dial-desktop/DIAL`. La contraseña de conexión, si se guarda, se cifra con el almacenamiento seguro de Electron en Windows.
-
-El modo rápido requiere que DIAL esté abierto para responder al atajo global. Si se cierra la aplicación, usa el menú contextual de Windows para archivos o carpetas. “Abrir ubicación para compartir” muestra el resultado en el Explorador; el envío automático a Blip todavía no está integrado.
+El instalador se genera en `release/`. Una compilación local no publica una Release de GitHub.
 
 ## Licencia y procedencia
 
-El código de Tangerine en `../` se distribuye bajo GPLv3. Este módulo se publica bajo GPL-3.0-only; consulta `COPYING` y `UPSTREAM-NOTICE.md`.
+Este módulo se distribuye bajo **GPL-3.0-only**. Consulta [`COPYING`](COPYING) y [`UPSTREAM-NOTICE.md`](UPSTREAM-NOTICE.md) para la licencia y la procedencia del código comunitario de Tangerine.

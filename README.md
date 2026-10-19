@@ -61,4 +61,3 @@ El modo rápido requiere que DIAL esté abierto para responder al atajo global. 
 ## Licencia y procedencia
 
 El código de Tangerine en `../` se distribuye bajo GPLv3. Este módulo se publica bajo GPL-3.0-only; consulta `COPYING` y `UPSTREAM-NOTICE.md`.
-

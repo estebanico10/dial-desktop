@@ -328,3 +328,12 @@
   .theme-dark .wheel-item:hover:not(:disabled) { transform: rotate(var(--angle)) translateY(-125px) rotate(calc(0deg - var(--angle))) scale(1.04); }
   .dial-overlay-root { padding: 15px; border-radius: 22px; }
 }
+
+.creator-credit { display:flex; align-items:center; justify-content:center; gap:7px; margin:18px 0 4px; padding:11px 0 2px; border-top:1px solid #26313d; color:#8795a5; font-size:10px; }
+.creator-credit b { color:#c5d0dc; font-weight:600; }
+.creator-credit-link { display:inline-flex; align-items:center; gap:3px; padding:2px 4px; border:0; background:transparent; color:#9bcfff; font:inherit; cursor:pointer; }
+.creator-credit-link:hover { color:#d6edff; text-decoration:underline; }
+.theme-light .creator-credit { border-color:#dce3e4; color:#718089; }
+.theme-light .creator-credit b { color:#3e4b52; }
+.theme-light .creator-credit-link { color:#286b9f; }
+.theme-light .creator-credit-link:hover { color:#174f7b; }

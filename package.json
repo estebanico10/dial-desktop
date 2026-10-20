@@ -1,8 +1,9 @@
 {
   "name": "dial-desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DIAL — local Windows workspace for forms, media and files",
-  "author": "DIAL contributors",
+  "author": "Esteban Nicola",
+  "homepage": "https://estebanico.com",
   "license": "GPL-3.0-only",
   "private": true,
   "main": "electron/main.cjs",
@@ -41,6 +42,7 @@
   "build": {
     "appId": "org.dial.windows",
     "productName": "DIAL",
+    "copyright": "Copyright © 2026 Esteban Nicola",
     "publish": [
       {
         "provider": "github",

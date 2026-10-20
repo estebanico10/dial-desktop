@@ -109,6 +109,12 @@ function App() {
         {page === 'forms' && <FormsPage forms={forms} refresh={refresh} onToast={toast} />}
         {page === 'responses' && <ResponsesPage responses={responses} forms={forms} navigate={navigate} onToast={toast} />}
         {page === 'settings' && <SettingsPage settings={settings} setSettings={setSettings} dataPath={dataPath} sync={sync} onToast={toast} refresh={refresh} />}
+        <footer className="creator-credit">
+          <span>Hecho por <b>Esteban Nicola</b></span>
+          <button className="creator-credit-link" onClick={() => window.dial.openExternal('https://estebanico.com')} aria-label="Visitar estebanico.com">
+            estebanico.com <ArrowUpRight size={12}/>
+          </button>
+        </footer>
       </div>
     </main>
     {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}

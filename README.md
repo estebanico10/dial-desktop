@@ -4,6 +4,8 @@
 
 [Descargar la última versión](https://github.com/estebanico10/dial-desktop/releases/latest) · [Ver todas las versiones](https://github.com/estebanico10/dial-desktop/releases) · [Informar un problema](https://github.com/estebanico10/dial-desktop/issues)
 
+Hecho por **Esteban Nicola** · [estebanico.com](https://estebanico.com)
+
 ![Pantalla de inicio de DIAL para Windows](docs/screenshots/inicio-dial.jpg)
 
 *Captura de la aplicación para Windows, versión 0.1.2. La captura no contiene datos personales.*
@@ -43,9 +45,9 @@ El botón **?** dentro de DIAL abre un tutorial, el catálogo de herramientas y 
 
 ## Descargas y actualizaciones
 
-La versión publicada se distribuye en [GitHub Releases](https://github.com/estebanico10/dial-desktop/releases). En Windows, abre **Ajustes → Actualizaciones de DIAL** para consultar el canal oficial o buscar una versión. La app también comprueba el canal al iniciar; si descarga una actualización, permite reiniciar e instalarla conservando los datos locales.
+Las versiones publicadas se distribuyen en [GitHub Releases](https://github.com/estebanico10/dial-desktop/releases). En Windows, abre **Ajustes → Actualizaciones de DIAL** para consultar el canal oficial o buscar una versión. La app también comprueba el canal al iniciar; si descarga una actualización, permite reiniciar e instalarla conservando los datos locales.
 
-El canal configurado apunta a `estebanico10/dial-desktop`. La Release 0.1.2 y su feed están publicados; la instalación actual 0.1.2 muestra que está al día. **Aún falta validar una actualización real desde una instalación anterior a una versión nueva.**
+El canal configurado apunta a `estebanico10/dial-desktop`. **La actualización de extremo a extremo desde una instalación anterior todavía no se ha validado.**
 
 ## Privacidad y estado de la integración
 

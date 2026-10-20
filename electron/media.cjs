@@ -10,7 +10,8 @@ const { zipSync, unzipSync, strFromU8 } = require('fflate');
 
 const active = new Map();
 const cancelled = new Set();
-const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'avif', 'tif', 'tiff'];
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'avif', 'tif', 'tiff', 'bmp', 'gif', 'svg'];
+const IMAGE_OUTPUT_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'avif', 'tif', 'tiff', 'gif'];
 const MEDIA_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'wmv', 'mp3', 'm4a', 'wav', 'flac', 'ogg', 'opus', 'aiff', 'wma'];
 const DOC_EXTENSIONS = ['docx', 'txt', 'md', 'csv', 'xlsx'];
 const PDF_EXTENSIONS = ['pdf'];
@@ -110,7 +111,9 @@ function runFfmpeg(jobId, input, output, args, onProgress, inputArgs = ['-i', in
 }
 
 async function convertImage(input, output, format, options = {}) {
-  let image = sharp(input, { animated: false, failOn: 'none' });
+  const prepared = extension(input) === 'bmp' ? await prepareImageInput(input, options.jobId) : { path: input, cleanup: async () => {} };
+  try {
+  let image = sharp(prepared.path, { animated: false, failOn: 'none' });
   if (options.brightness !== undefined || options.saturation !== undefined) image = image.modulate({ brightness: Math.max(0.1, Math.min(2, Number(options.brightness ?? 100) / 100)), saturation: Math.max(0, Math.min(3, Number(options.saturation ?? 100) / 100)) });
   if (options.contrast !== undefined && Number(options.contrast) !== 100) { const contrast = Math.max(0.25, Math.min(2.5, Number(options.contrast) / 100)); image = image.linear(contrast, 128 * (1 - contrast)); }
   if (options.redact) {
@@ -136,6 +139,17 @@ async function convertImage(input, output, format, options = {}) {
   const target = format === 'jpg' ? 'jpeg' : format;
   image = image.toFormat(target, target === 'png' ? { compressionLevel: 9 } : { quality });
   await image.toFile(output);
+  } finally { await prepared.cleanup(); }
+}
+
+async function prepareImageInput(input, jobId) {
+  if (extension(input) !== 'bmp') return { path: input, cleanup: async () => {} };
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dial-image-'));
+  const output = path.join(directory, 'source.png');
+  try {
+    await runFfmpeg(jobId || `image-${Date.now()}`, input, output, ['-frames:v', '1']);
+    return { path: output, cleanup: () => fs.rm(directory, { recursive: true, force: true }) };
+  } catch (error) { await fs.rm(directory, { recursive: true, force: true }); throw error; }
 }
 
 async function createCollage(files, output, options = {}, jobId, onProgress) {
@@ -153,7 +167,10 @@ async function createCollage(files, output, options = {}, jobId, onProgress) {
   for (const [index, file] of files.entries()) {
     if (cancelled.has(jobId)) throw new Error('Cancelado por el usuario.');
     if (!IMAGE_EXTENSIONS.includes(extension(file))) throw new Error(`El collage solo admite imágenes; ${path.basename(file)} no es compatible.`);
-    const image = await sharp(file, { failOn: 'none' }).resize(cellWidth, cellHeight, { fit: 'cover', position: 'centre' }).png().toBuffer();
+    const prepared = await prepareImageInput(file, jobId);
+    let image;
+    try { image = await sharp(prepared.path, { failOn: 'none' }).resize(cellWidth, cellHeight, { fit: 'cover', position: 'centre' }).png().toBuffer(); }
+    finally { await prepared.cleanup(); }
     composites.push({ input: image, left: gap + (index % columns) * (cellWidth + gap), top: gap + Math.floor(index / columns) * (cellHeight + gap) });
     report(onProgress, jobId, files[0], 3 + ((index + 1) / files.length) * 90);
   }
@@ -208,7 +225,11 @@ function docxToHtml(xml) {
 
 async function runOne({ input, operation, format, options = {}, settings = {}, jobId, onProgress }) {
   const ext = extension(input);
-  const outputFormat = operation === 'snapshot-video' ? 'png' : (format || ext).toLowerCase();
+  const outputFormat = operation === 'snapshot-video' || operation === 'create-collage' ? 'png'
+    : operation === 'create-zip' ? 'zip'
+      : operation === 'extract-audio' ? 'mp3'
+        : operation !== 'convert' && ['bmp','svg'].includes(ext) ? 'webp'
+          : (format || ext).toLowerCase();
   if (cancelled.has(jobId)) return { output: '', label: path.basename(input), input, status: 'cancelled' };
   if (['normalize-audio', 'mono-audio', 'volume-audio', 'trim-audio', 'speed-audio', 'extract-audio', 'fade-audio'].includes(operation) && !MEDIA_EXTENSIONS.includes(ext)) throw new Error('Esta herramienta requiere un archivo de audio o video.');
   if (['trim-video', 'speed-video'].includes(operation) && !MEDIA_EXTENSIONS.includes(ext)) throw new Error('Esta herramienta requiere un archivo de video o audio.');
@@ -298,8 +319,8 @@ async function runOne({ input, operation, format, options = {}, settings = {}, j
   if (operation === 'snapshot-video' && ['mp4','mov','mkv','webm','avi','wmv'].includes(ext)) {
     const seconds = String(options.timestamp || '00:00:01');
     await runFfmpeg(jobId, input, out, ['-ss', seconds, '-frames:v', '1'], onProgress);
-  } else if (IMAGE_EXTENSIONS.includes(ext) && IMAGE_EXTENSIONS.includes(outputFormat)) {
-    await convertImage(input, out, outputFormat, { quality: options.quality || settings.imageQuality, width: ['resize-image','crop-image'].includes(operation) ? options.width : undefined, height: ['resize-image','crop-image'].includes(operation) ? options.height : undefined, redactWidth: options.width, redactHeight: options.height, fit: options.fit, rotation: operation === 'rotate-image' ? options.rotation : undefined, stripMetadata: operation === 'remove-metadata', crop: operation === 'crop-image', redact: operation === 'redact-image', redactColor: options.redactColor, x: options.x, y: options.y, brightness: options.brightness, saturation: options.saturation, contrast: options.contrast });
+  } else if (IMAGE_EXTENSIONS.includes(ext) && IMAGE_OUTPUT_FORMATS.includes(outputFormat)) {
+    await convertImage(input, out, outputFormat, { jobId, quality: options.quality || settings.imageQuality, width: ['resize-image','crop-image'].includes(operation) ? options.width : undefined, height: ['resize-image','crop-image'].includes(operation) ? options.height : undefined, redactWidth: options.width, redactHeight: options.height, fit: options.fit, rotation: operation === 'rotate-image' ? options.rotation : undefined, stripMetadata: operation === 'remove-metadata', crop: operation === 'crop-image', redact: operation === 'redact-image', redactColor: options.redactColor, x: options.x, y: options.y, brightness: options.brightness, saturation: options.saturation, contrast: options.contrast });
   } else if (MEDIA_EXTENSIONS.includes(ext) && MEDIA_EXTENSIONS.includes(outputFormat)) {
     const args = [];
     if (operation === 'crop-video') {
@@ -340,7 +361,10 @@ async function runOne({ input, operation, format, options = {}, settings = {}, j
     return { output: dir, label: path.basename(input), input, status: 'done' };
   } else if (IMAGE_EXTENSIONS.includes(ext) && outputFormat === 'pdf') {
     const pdf = await PDFDocument.create(); const bytes = await fs.readFile(input);
-    const imageBytes = ['jpg', 'jpeg'].includes(ext) ? bytes : await sharp(input).png().toBuffer();
+    const prepared = await prepareImageInput(input, jobId);
+    let imageBytes;
+    try { imageBytes = ['jpg', 'jpeg'].includes(ext) ? bytes : await sharp(prepared.path).png().toBuffer(); }
+    finally { await prepared.cleanup(); }
     const image = ['jpg', 'jpeg'].includes(ext) ? await pdf.embedJpg(imageBytes) : await pdf.embedPng(imageBytes);
     const page = pdf.addPage([image.width, image.height]); page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
     await fs.writeFile(out, await pdf.save());

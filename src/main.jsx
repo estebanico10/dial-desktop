@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import dialIconUrl from '../build/icon.svg?url';
 import {
-  Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, BadgeCheck, Box, Check,
+  Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, BadgeCheck, BookOpen, Box, Check,
   ChevronDown, ChevronRight, CircleHelp, Clock3, Cloud, CloudOff, Command, Copy, File,
   FileArchive, FileAudio, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, FolderOpen,
   Gauge, HardDrive, Image, Layers3, ListFilter, LockKeyhole, MoreHorizontal, Pause, Play,
@@ -12,10 +12,12 @@ import {
 import './style.css';
 
 
+const IMAGE_TYPES = ['jpg','jpeg','png','webp','avif','tif','tiff','bmp','gif','svg'];
 const FORMAT_MATRIX = {
   jpg: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'], jpeg: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'],
   png: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'], webp: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'],
   avif: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'], tif: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'], tiff: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'],
+  bmp: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'], gif: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'], svg: ['jpg', 'png', 'webp', 'avif', 'tiff', 'pdf'],
   mp4: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3'], mov: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3'],
   mkv: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3'], webm: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3'],
   avi: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3'], wmv: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3'],
@@ -66,8 +68,8 @@ function PdfPagePicker({ filePath, value, onChange }) {
 
 function App() {
   const [page, setPage] = useState('home');
-  const [quickMode, setQuickMode] = useState(false);
   const [quickPaths, setQuickPaths] = useState([]);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [settings, setSettings] = useState(null);
   const [forms, setForms] = useState([]);
   const [responses, setResponses] = useState([]);
@@ -84,10 +86,9 @@ function App() {
 
   useEffect(() => { refresh().catch(() => {}); }, [refresh]);
   useEffect(() => {
-    const open = (paths) => { setPage('files'); setQuickPaths(paths || []); setQuickMode(true); };
-    const stopOpen = window.dial.onQuickOpen(open); const stopClose = window.dial.onQuickClose(() => setQuickMode(false));
-    window.dial.quickState().then((state) => { if (state.active) open(state.paths); }).catch(() => {});
-    return () => { stopOpen(); stopClose(); };
+    const open = (paths) => { setPage('files'); setQuickPaths(paths || []); };
+    const stopOpen = window.dial.onFilesOpen(open);
+    return () => stopOpen();
   }, []);
   useEffect(() => {
     if (!notice) return undefined;
@@ -101,7 +102,7 @@ function App() {
   return <div className={`app-shell theme-${settings?.appearance || 'dark'}`}>
     <Sidebar page={page} navigate={navigate} />
     <main className="main-shell">
-      <Header page={page} navigate={navigate} sync={sync} />
+      <Header page={page} navigate={navigate} sync={sync} onHelp={() => setHelpOpen(true)} />
       <div className="page-content">
         {page === 'home' && <Home forms={forms} responses={responses} sync={sync} navigate={navigate} />}
         {page === 'files' && <FilesPage settings={settings} onToast={toast} quickPaths={quickPaths} />}
@@ -110,72 +111,100 @@ function App() {
         {page === 'settings' && <SettingsPage settings={settings} setSettings={setSettings} dataPath={dataPath} sync={sync} onToast={toast} refresh={refresh} />}
       </div>
     </main>
-    {quickMode && <QuickOverlay paths={quickPaths} onToast={toast} onClose={() => window.dial.quickClose()} onOpenFiles={(paths) => { setQuickPaths(paths); window.dial.quickClose(); setPage('files'); }} />}
+    {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
     {notice && <div className={`toast ${notice.kind}`}><span className="toast-icon">{notice.kind === 'error' ? <X size={16}/> : <Check size={16}/>}</span>{notice.message}</div>}
   </div>;
 }
 
-function QuickOverlay({ paths, onToast, onClose, onOpenFiles }) {
+function QuickOverlay({ paths = [], onToast = () => {}, onClose = () => window.dial.quickClose(), onOpenFiles = (items) => window.dial.openFiles(items) }) {
   const [files, setFiles] = useState([]); const [directories, setDirectories] = useState([]); const [unsupported, setUnsupported] = useState(0);
-  const [truncated, setTruncated] = useState(false);
-  const [scanning, setScanning] = useState(false); const [busy, setBusy] = useState(false); const [output, setOutput] = useState('');
+  const [truncated, setTruncated] = useState(false); const [scanning, setScanning] = useState(false); const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState('formats'); const [format, setFormat] = useState(''); const [operation, setOperation] = useState('convert'); const [output, setOutput] = useState('');
+  const first = files[0];
+  const outputs = first ? files.slice(1).reduce((common, file) => common.filter((item) => (FORMAT_MATRIX[file.ext] || []).includes(item)), FORMAT_MATRIX[first.ext] || []) : [];
+  const isAudio = files.some((file) => ['mp3','m4a','wav','flac','ogg','opus','aiff','wma'].includes(file.ext));
+  const isVideo = files.some((file) => ['mp4','mov','mkv','webm','avi','wmv'].includes(file.ext));
+  const toolItems = [
+    ...(files.length ? [{ id: 'create-zip', label: 'Crear ZIP', icon: <FileArchive size={15}/> }] : []),
+    ...(files.some((file) => IMAGE_TYPES.includes(file.ext)) ? [{ id: 'optimize', label: 'Comprimir', icon: <Zap size={15}/> }, { id: 'remove-metadata', label: 'Quitar datos', icon: <ShieldCheck size={15}/> }] : []),
+    ...(isAudio || isVideo ? [{ id: 'optimize', label: 'Comprimir', icon: <Zap size={15}/> }] : []),
+    ...(isVideo ? [{ id: 'mute-video', label: 'Quitar audio', icon: <AudioLines size={15}/> }, { id: 'snapshot-video', label: 'Fotograma', icon: <Image size={15}/> }, { id: 'extract-audio', label: 'Extraer audio', icon: <FileAudio size={15}/> }] : []),
+  ];
+  const operationFiles = operation === 'remove-metadata' ? files.filter((file) => IMAGE_TYPES.includes(file.ext))
+    : ['mute-video','snapshot-video','extract-audio'].includes(operation) ? files.filter((file) => ['mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
+      : files;
+  const wheelItems = mode === 'formats' ? outputs.map((item) => ({ id: item, label: item.toUpperCase() })) : [...new Map(toolItems.map((item) => [item.id, item])).values()].slice(0, 8);
   const loadPaths = async (nextPaths) => {
     if (!nextPaths?.length) return;
     setScanning(true); setOutput('');
     try {
       const result = await window.dial.expandPaths(nextPaths);
-      setFiles((current) => [...new Map([...current, ...result.files].map((file) => [file.path, file])).values()]);
-      setDirectories((current) => [...new Set([...current, ...result.directories])]);
-      setUnsupported((current) => current + result.unsupported);
-      setTruncated((current) => current || result.truncated);
+      setFiles((current) => [...new Map([...current, ...result.files.filter((file) => file.supported)].map((file) => [file.path, file])).values()]);
+      setDirectories((current) => [...new Set([...current, ...result.directories])]); setUnsupported((current) => current + result.unsupported); setTruncated((current) => current || result.truncated);
       if (result.truncated) onToast('El análisis se limitó a 5.000 archivos.', 'error');
-      if (result.unsupported) onToast(`${result.unsupported} elementos no compatibles fueron omitidos.`, 'error');
+      if (result.unsupported) onToast(`${result.unsupported} elementos sin herramienta se omitieron.`, 'error');
     } catch (error) { onToast(`No se pudo analizar la selección: ${error.message}`, 'error'); }
     finally { setScanning(false); }
   };
-  useEffect(() => { loadPaths(paths); }, [paths.join('|')]);
+  useEffect(() => { if (paths.length) loadPaths(paths); }, [paths.join('|')]);
   useEffect(() => { const onKey = (event) => { if (event.key === 'Escape') onClose(); }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, [onClose]);
+  useEffect(() => { if (outputs.length && !outputs.includes(format)) setFormat(outputs[0]); }, [outputs.join('|'), format]);
   const addFiles = async () => loadPaths(await window.dial.chooseFiles());
-  const addFolder = async () => loadPaths(await window.dial.chooseFolderForFiles());
-  const drop = async (event) => { event.preventDefault(); const dropped = Array.from(event.dataTransfer.files).map((file) => window.dial.pathForFile(file)).filter(Boolean); await loadPaths(dropped); };
-  const groups = files.reduce((counts, file) => { const type = category(file.ext); counts[type] = (counts[type] || 0) + 1; return counts; }, {});
-  const media = files.filter((file) => ['jpg','jpeg','png','webp','avif','tif','tiff','mp3','m4a','wav','flac','ogg','opus','aiff','wma','mp4','mov','mkv','webm','avi','wmv'].includes(file.ext));
-  const makeZip = async () => {
-    if (!files.length || busy || truncated) return;
+  const drop = async (event) => { event.preventDefault(); window.dial.quickDropReceived(); const dropped = Array.from(event.dataTransfer.files).map((file) => window.dial.pathForFile(file)).filter(Boolean); await loadPaths(dropped); };
+  const run = async () => {
+    if (!operationFiles.length || busy || (operation === 'convert' && !format)) return;
     setBusy(true); setOutput('');
     try {
       const settings = await window.dial.settingsGet();
-      const results = await window.dial.convert({ files: files.map((file) => file.path), operation: 'create-zip', options: { files: files.map((file) => file.path), archiveRoot: directories.length === 1 ? directories[0] : '' }, settings });
-      const result = results[0]; if (result?.status !== 'done') throw new Error(result?.error || 'No se pudo crear el ZIP.');
-      setOutput(result.output); onToast('Carpeta comprimida en ZIP.');
+      const selected = operationFiles.map((file) => file.path);
+      const result = await window.dial.convert({ files: selected, format: operation === 'convert' ? format : undefined, operation, options: { quality: settings.imageQuality || 84, crf: settings.videoCrf || 24, bitrate: settings.audioBitrate || '192k', files: selected, archiveRoot: directories.length === 1 ? directories[0] : '' }, settings });
+      const done = result.filter((item) => item.status === 'done'); if (!done.length) throw new Error(result.find((item) => item.error)?.error || 'No se pudo completar la acción.');
+      setOutput(done[0].output); onToast(`${done.length} resultado${done.length === 1 ? '' : 's'} listo${done.length === 1 ? '' : 's'}.`);
     } catch (error) { onToast(error.message, 'error'); }
     finally { setBusy(false); }
   };
-  const compressMedia = async () => {
-    if (!media.length || busy) return;
-    setBusy(true); setOutput('');
-    try {
-      const settings = await window.dial.settingsGet();
-      const results = await window.dial.convert({ files: media.map((file) => file.path), operation: 'optimize', options: { quality: settings.imageQuality || 84, crf: settings.videoCrf || 24, bitrate: settings.audioBitrate || '192k' }, settings });
-      const done = results.filter((result) => result.status === 'done');
-      if (!done.length) throw new Error(results.find((result) => result.error)?.error || 'No se pudieron comprimir los medios.');
-      setOutput(done[0].output); onToast(`${done.length} de ${results.length} archivos comprimidos.`);
-    } catch (error) { onToast(error.message, 'error'); }
-    finally { setBusy(false); }
-  };
-  const shareLocation = async () => {
-    const target = output || directories[0] || (files[0] ? files[0].path.replace(/[\\/][^\\/]+$/, '') : '');
-    if (target) await window.dial.revealPath(target);
-  };
-  return <div className="quick-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="quick-overlay-card" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
-    <header className="quick-overlay-head"><div className="quick-brand"><span className="quick-brand-mark">D</span><div><b>Acceso rápido</b><small>Soltar · analizar · continuar</small></div></div><div className="quick-head-actions"><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>D</kbd><button className="icon-button" onClick={onClose} aria-label="Cerrar modo rápido"><X size={18}/></button></div></header>
-    <div className="quick-drop-zone"><div className="quick-drop-icon"><Upload size={22}/></div><b>Suelta archivos o una carpeta</b><span>DIAL detecta tipos y muestra acciones disponibles.</span><div><button className="outline-button" onClick={addFiles}><File size={14}/> Elegir archivos</button><button className="outline-button" onClick={addFolder}><FolderOpen size={14}/> Analizar carpeta</button></div></div>
-    {scanning && <div className="quick-scan-status"><span className="button-spinner"/> Analizando archivos y subcarpetas…</div>}
-    {files.length > 0 && <><div className="quick-analysis"><div className="quick-analysis-title"><b>{directories.length ? 'Contenido detectado' : 'Selección detectada'}</b><span>{files.length} encontrados{unsupported ? ` · ${unsupported} tipos sin herramienta` : ''}</span></div><div className="quick-type-pills">{Object.entries(groups).map(([type, count]) => <span key={type}>{type}<b>{count}</b></span>)}</div><div className="quick-file-preview">{files.slice(0, 5).map((file) => <div key={file.path}><span>{file.name}</span><small>{file.ext.toUpperCase() || 'SIN EXTENSIÓN'}</small></div>)}{files.length > 5 && <small>y {files.length - 5} más</small>}</div>{truncated && <p className="quick-limit-warning">El análisis llegó al límite de 5.000 elementos. Crear ZIP está desactivado para no generar un archivo incompleto.</p>}</div>
-      <div className="quick-action-grid"><button onClick={makeZip} disabled={busy || truncated}><FileArchive size={17}/><b>Crear ZIP</b><small>{truncated ? 'Selección incompleta' : `Empaqueta ${directories.length ? 'la carpeta' : 'la selección'}`}</small></button><button onClick={compressMedia} disabled={busy || !media.length}><Zap size={17}/><b>Comprimir medios</b><small>{media.length ? `${media.length} imágenes, audios o videos` : 'No hay medios compatibles'}</small></button><button onClick={() => onOpenFiles(files.map((file) => file.path))}><WandSparkles size={17}/><b>Más herramientas</b><small>Convertir, editar y organizar</small></button></div>
-    </>}
-    <footer className="quick-overlay-footer"><span>Los originales permanecen en su ubicación.</span><div>{output && <button className="text-button" onClick={() => window.dial.revealPath(output)}>Abrir resultado <ArrowUpRight size={13}/></button>}<button className="text-button" onClick={shareLocation} disabled={!files.length}>Abrir ubicación para compartir <ArrowUpRight size={13}/></button><button className="quick-close-button" onClick={onClose}>Listo</button></div></footer>
-  </section></div>;
+  const choose = (item) => { if (mode === 'formats') { setOperation('convert'); setFormat(item.id); } else { setOperation(item.id); setFormat(''); } };
+  const centerLabel = files.length ? `${files.length} ARCHIVO${files.length === 1 ? '' : 'S'}` : 'SUELTA AQUÍ';
+  const centerType = files.length > 1 ? 'DIAL' : first?.ext?.toUpperCase() || 'DIAL';
+  return <main className="dial-overlay-root" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
+    <header className="overlay-head"><div className="overlay-brand"><img src={dialIconUrl} alt=""/><span><b>DIAL</b><small>ESPACIO RÁPIDO · LOCAL</small></span></div><div className="overlay-head-right"><kbd>Ctrl ⇧ D</kbd><button onClick={onClose} aria-label="Cerrar"><X size={17}/></button></div></header>
+    <section className="overlay-wheel-wrap" aria-label="Acceso rápido de DIAL">
+      <div className={`overlay-wheel ${scanning ? 'is-scanning' : ''}`}>
+        <div className="overlay-wheel-rings"/>
+        {wheelItems.slice(0, 8).map((item, index) => <button key={item.id} className={`overlay-wheel-item ${((mode === 'formats' && operation === 'convert' && format === item.id) || (mode === 'tools' && operation === item.id)) ? 'active' : ''}`} style={{ '--angle': `${360 / Math.max(wheelItems.length, 1) * index - 90}deg` }} title={mode === 'formats' ? `Convertir a ${item.label}` : item.label} onClick={() => choose(item)}>{mode === 'tools' && item.icon}<span>{item.label}</span></button>)}
+        <button className="overlay-wheel-center" onClick={addFiles} title="Elegir archivos o soltarlos aquí"><span>{files.length ? fileIcon(first?.ext) : <Upload size={25}/>}</span><b>{centerType}</b><small>{scanning ? 'ANALIZANDO…' : centerLabel}</small></button>
+      </div>
+    </section>
+    <nav className="overlay-toolbar"><div className="overlay-mode-switch"><button className={mode === 'formats' ? 'active' : ''} onClick={() => { setMode('formats'); setOperation('convert'); }}>Formatos</button><button className={mode === 'tools' ? 'active' : ''} onClick={() => { setMode('tools'); setOperation('optimize'); }}>Herramientas</button></div><button onClick={addFiles}><Plus size={14}/> Añadir</button></nav>
+    <div className="overlay-selection">{files.length ? <><span title={files.map((file) => file.name).join('\n')}>{first.name}{files.length > 1 ? ` · +${files.length - 1}` : ''}{unsupported ? ` · ${unsupported} omitidos` : ''}</span><button onClick={() => { setFiles([]); setDirectories([]); setOutput(''); }} aria-label="Limpiar selección"><Trash2 size={13}/></button></> : <span>Arrastra un archivo aquí desde cualquier app o pulsa el centro</span>}</div>
+    {truncated && <small className="overlay-warning">La carpeta supera el límite de 5.000 elementos.</small>}
+    <footer className="overlay-footer"><span>{output ? <button onClick={() => window.dial.revealPath(output)}>Abrir resultado <ArrowUpRight size={12}/></button> : 'Originales intactos · procesamiento local'}</span><button className="overlay-full-tools" onClick={() => onOpenFiles(files.map((file) => file.path))}>Más opciones <ArrowRight size={13}/></button>{['convert','optimize','create-zip','remove-metadata','mute-video','snapshot-video','extract-audio'].includes(operation) && <button className="overlay-run" disabled={!operationFiles.length || busy || (operation === 'create-zip' && truncated) || (operation === 'convert' && !format)} onClick={run}>{busy ? 'Procesando…' : operation === 'convert' ? `Convertir ${format.toUpperCase()}` : operation === 'create-zip' ? 'Crear ZIP' : operation === 'remove-metadata' ? 'Quitar datos' : operation === 'mute-video' ? 'Quitar audio' : operation === 'snapshot-video' ? 'Fotograma' : operation === 'extract-audio' ? 'Extraer audio' : 'Comprimir'} <ArrowRight size={13}/></button>}</footer>
+  </main>;
+}
+
+function QuickOverlayWindow() {
+  const [paths, setPaths] = useState([]);
+  const [session, setSession] = useState(0);
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    const open = (next) => { setPaths(next || []); setMessage(''); setSession((value) => value + 1); };
+    const stop = window.dial.onQuickOpen(open);
+    window.dial.quickState().then((state) => { if (state.active) open(state.paths); }).catch(() => {});
+    return () => stop();
+  }, []);
+  return <><QuickOverlay key={session} paths={paths} onToast={setMessage}/>{message && <div className="overlay-message" role="status">{message}</div>}</>;
+}
+
+function HelpDialog({ onClose }) {
+  const [tab, setTab] = useState('guide');
+  const groups = [
+    { title: 'Imágenes', items: [['Convertir y optimizar', 'Guarda una copia en otro formato o reduce su tamaño. BMP y SVG se rasterizan al exportar.'], ['Redimensionar y recortar', 'Cambia dimensiones o selecciona un rectángulo usando coordenadas en píxeles.'], ['Girar y ajustar color', 'Rota 90°, 180° o 270°; ajusta brillo, contraste y saturación.'], ['Ocultar área y quitar metadatos', 'Cubre una zona con un bloque opaco o exporta sin datos EXIF. Revisa el resultado antes de compartirlo.'], ['Collage', 'Combina hasta 20 imágenes en una cuadrícula configurable.'], ['GIF animado', 'Solo se procesa el primer fotograma; el resultado será una imagen fija.']] },
+    { title: 'Audio y video', items: [['Convertir y comprimir', 'Usa FFmpeg incluido para recodificar medios compatibles. La calidad y el tamaño de salida dependen del formato y del archivo fuente.'], ['Recortar y cambiar velocidad', 'Selecciona un fragmento de audio o video, o ajusta su velocidad de reproducción.'], ['Audio', 'Normaliza volumen, cambia nivel, funde inicio/final, convierte a mono o edita etiquetas.'], ['Video', 'Quita el audio, recorta el encuadre, guarda un fotograma, extrae audio, divide o une videos.']] },
+    { title: 'PDF, documentos y datos', items: [['PDF', 'Une documentos, divide páginas, gira o reordena páginas con miniaturas.'], ['Tablas', 'Convierte CSV a XLSX y XLSX a CSV.'], ['Texto', 'Convierte TXT a Markdown y Markdown a TXT; transforma subtítulos SRT y VTT.'], ['ZIP', 'Crea ZIP a partir de archivos o carpetas y extrae archivos ZIP.']] },
+    { title: 'Formularios', items: [['Crear y editar', 'Diseña formularios con texto, números, listas, sí/no, fechas y adjuntos.'], ['Preguntas condicionales', 'Muestra una pregunta según la respuesta elegida en otra pregunta anterior.'], ['Respuestas', 'Guarda respuestas localmente y expórtalas a XLSX.']] },
+  ];
+  useEffect(() => { const onKey = (event) => { if (event.key === 'Escape') onClose(); }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, [onClose]);
+  return <div className="help-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title"><header><div><span className="help-kicker"><BookOpen size={14}/> CENTRO DE AYUDA</span><h2 id="help-title">Conoce DIAL</h2><p>Guía rápida y explicación de las herramientas disponibles.</p></div><button className="icon-button" onClick={onClose} aria-label="Cerrar ayuda"><X size={18}/></button></header><nav className="help-tabs"><button className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}>Tutorial</button><button className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')}>Herramientas</button><button className={tab === 'formats' ? 'active' : ''} onClick={() => setTab('formats')}>Formatos</button></nav><div className="help-content">{tab === 'guide' ? <><h3>Empieza en tres pasos</h3><ol className="help-steps"><li><b>Elige dónde trabajar</b><span>Usa Archivos para ver todas las opciones. Pulsa <kbd>Ctrl + Shift + D</kbd> desde cualquier aplicación para abrir solo la rueda flotante; la ventana principal se oculta mientras está activa.</span></li><li><b>Añade tu contenido</b><span>En Windows, mantén <kbd>Shift</kbd> mientras arrastras un archivo desde el Explorador para abrir la rueda cerca del cursor; suéltalo sobre el widget para analizarlo.</span></li><li><b>Elige una acción y revisa el resultado</b><span>Selecciona un formato o herramienta y pulsa el botón de acción. DIAL crea una copia y conserva el original; usa “Más opciones” para configurar detalles.</span></li></ol><div className="help-note"><ShieldCheck size={16}/><span><b>Privacidad local:</b> las conversiones se procesan en este equipo. Formularios y respuestas se guardan localmente. La sincronización requiere configurar un servidor aparte.</span></div><h3>Cola e historial</h3><p>En Archivos puedes ver el progreso, abrir resultados y reintentar trabajos fallidos o interrumpidos. Los trabajos se guardan en este equipo.</p></> : tab === 'tools' ? groups.map((group) => <section className="help-tool-group" key={group.title}><h3>{group.title}</h3>{group.items.map(([name, detail]) => <article key={name}><b>{name}</b><p>{detail}</p></article>)}</section>) : <><h3>Formatos que puedes seleccionar</h3><p className="help-format-intro">La rueda muestra solo salidas compatibles con el archivo seleccionado. Algunas combinaciones dependen de los códecs disponibles en el motor local; un formato admitido no garantiza que todo archivo fuente pueda convertirse.</p><div className="help-format-grid"><div><b>Imágenes</b><span>JPG, JPEG, PNG, WebP, AVIF, TIF, TIFF, BMP, GIF y SVG</span><small>GIF se aplana al primer fotograma; BMP y SVG se rasterizan.</small></div><div><b>Audio</b><span>MP3, M4A, WAV, FLAC, OGG, OPUS, AIFF, WMA</span></div><div><b>Video</b><span>MP4, MOV, MKV, WebM, AVI, WMV</span></div><div><b>Documentos y datos</b><span>PDF, DOCX, TXT, MD, CSV, XLSX, SRT, VTT, ZIP</span></div></div><p className="help-limits">DIAL no incluye aún sincronización completa con Tangerine/CouchDB ni envío directo a Blip. Consulta Ajustes para el estado de conexión y las actualizaciones.</p></>}</div><footer><span>DIAL · Procesamiento local</span><button className="primary-button" onClick={onClose}>Entendido</button></footer></section></div>;
 }
 
 function Sidebar({ page, navigate }) {
@@ -200,12 +229,12 @@ function Sidebar({ page, navigate }) {
   </aside>;
 }
 
-function Header({ page, navigate, sync }) {
+function Header({ page, navigate, sync, onHelp }) {
   const [shortcutReady, setShortcutReady] = useState(true);
   useEffect(() => { window.dial.quickShortcutStatus().then(setShortcutReady).catch(() => setShortcutReady(false)); }, []);
   const titles = { home: ['Resumen', 'Tu trabajo, en un solo lugar'], files: ['Herramientas de archivos', 'Convierte y edita en este equipo'], forms: ['Formularios', 'Diseña formularios y recopila respuestas offline'], responses: ['Respuestas', 'Registros guardados en este equipo'], settings: ['Ajustes', 'Personaliza DIAL para tu flujo'] };
   const [title, subtitle] = titles[page];
-  return <header className="top-header"><div className="breadcrumb"><span>Espacio personal</span><ChevronRight size={14}/><b>{title}</b></div><div className="header-actions"><button className="quick-trigger" onClick={() => window.dial.quickOpen()} title={shortcutReady ? 'Abrir acceso rápido con Ctrl+Shift+D' : 'Este atajo está ocupado. Usa este botón.'}><Command size={14}/> Rápido <kbd>{shortcutReady ? 'Ctrl+Shift+D' : 'atajo ocupado'}</kbd></button><div className={`sync-pill ${sync.configured ? 'connected' : ''}`}><i/>{sync.configured ? 'Servidor configurado' : 'Solo local'}</div><button className="help-button" onClick={() => navigate('settings')} aria-label="Ayuda"><CircleHelp size={18}/></button><div className="header-avatar">D</div></div></header>;
+  return <header className="top-header"><div className="breadcrumb"><span>Espacio personal</span><ChevronRight size={14}/><b>{title}</b></div><div className="header-actions"><button className="quick-trigger" onClick={() => window.dial.quickOpen()} title={shortcutReady ? 'Abrir DIAL flotante con Ctrl+Shift+D' : 'Este atajo está ocupado. Usa este botón.'}><Command size={14}/> Rápido <kbd>{shortcutReady ? 'Ctrl+Shift+D' : 'atajo ocupado'}</kbd></button><div className={`sync-pill ${sync.configured ? 'connected' : ''}`}><i/>{sync.configured ? 'Servidor configurado' : 'Solo local'}</div><button className="help-button" onClick={onHelp} aria-label="Tutorial y herramientas" title="Tutorial y herramientas"><CircleHelp size={18}/></button><div className="header-avatar">D</div></div></header>;
 }
 
 function Home({ forms, responses, sync, navigate }) {
@@ -288,18 +317,18 @@ function FilesPage({ settings, onToast, quickPaths = [] }) {
     finally { setBusy(false); }
   };
   const clear = () => { if (busy) return; setFiles([]); setJobs([]); setFormat(''); setFolderRoot(''); setFolderTruncated(false); };
-  const mediaFiles = files.some((file) => ['jpg','jpeg','png','webp','avif','tif','tiff','mp3','m4a','wav','flac','ogg','opus','aiff','wma','mp4','mov','mkv','webm','avi','wmv'].includes(file.ext));
+  const mediaFiles = files.some((file) => [...IMAGE_TYPES,'mp3','m4a','wav','flac','ogg','opus','aiff','wma','mp4','mov','mkv','webm','avi','wmv'].includes(file.ext));
   const videoFiles = files.some((file) => ['mp4','mov','mkv','webm','avi','wmv'].includes(file.ext));
   const audioFiles = files.some((file) => ['mp3','m4a','wav','flac','ogg','opus','aiff','wma'].includes(file.ext));
-  const operationFiles = operation === 'optimize' ? files.filter((file) => ['jpg','jpeg','png','webp','avif','tif','tiff','mp3','m4a','wav','flac','ogg','opus','aiff','wma','mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
+  const operationFiles = operation === 'optimize' ? files.filter((file) => [...IMAGE_TYPES,'mp3','m4a','wav','flac','ogg','opus','aiff','wma','mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
     : ['normalize-audio','mono-audio','volume-audio','fade-audio'].includes(operation) ? files.filter((file) => ['mp3','m4a','wav','flac','ogg','opus','aiff','wma'].includes(file.ext))
     : ['trim-video','speed-video','split-video'].includes(operation) ? files.filter((file) => ['mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
     : operation === 'join-video' ? files.filter((file) => ['mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
     : ['trim-audio','speed-audio','normalize-audio','mono-audio','volume-audio','fade-audio'].includes(operation) ? files.filter((file) => ['mp3','m4a','wav','flac','ogg','opus','aiff','wma'].includes(file.ext))
     : operation === 'metadata-media' ? files.filter((file) => ['mp3','m4a','wav','flac','ogg','opus','aiff','wma','mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
     : operation === 'extract-audio' ? files.filter((file) => ['mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
-    : operation === 'create-collage' ? files.filter((file) => ['jpg','jpeg','png','webp','avif','tif','tiff'].includes(file.ext)).slice(0, 20)
-    : ['resize-image','rotate-image','remove-metadata','crop-image','adjust-image','redact-image'].includes(operation) ? files.filter((file) => ['jpg','jpeg','png','webp','avif','tif','tiff'].includes(file.ext))
+    : operation === 'create-collage' ? files.filter((file) => IMAGE_TYPES.includes(file.ext)).slice(0, 20)
+    : ['resize-image','rotate-image','remove-metadata','crop-image','adjust-image','redact-image'].includes(operation) ? files.filter((file) => IMAGE_TYPES.includes(file.ext))
     : ['snapshot-video','crop-video','mute-video'].includes(operation) ? files.filter((file) => ['mp4','mov','mkv','webm','avi','wmv'].includes(file.ext))
     : ['split-pdf','merge-pdf'].includes(operation) ? files.filter((file) => file.ext === 'pdf')
     : ['rotate-pdf','organize-pdf'].includes(operation) ? files.filter((file) => file.ext === 'pdf')
@@ -318,8 +347,8 @@ function FilesPage({ settings, onToast, quickPaths = [] }) {
   }, [operation, trimFile?.path, trimStart, trimEnd]);
   const radialTools = [
     ...(mediaFiles ? [{ id: 'optimize', label: 'Comprimir', icon: <Zap size={15}/>, detail: 'Reduce el tamaño' }] : []),
-    ...(files.some((file) => ['jpg','jpeg','png','webp','avif','tif','tiff'].includes(file.ext)) ? [{ id: 'resize-image', label: 'Redimensionar', icon: <Image size={15}/>, detail: 'Ajusta ancho y alto' }, { id: 'crop-image', label: 'Recortar imagen', icon: <Scissors size={15}/>, detail: 'Define un área en píxeles' }, { id: 'rotate-image', label: 'Girar imagen', icon: <RefreshCw size={15}/>, detail: 'Rota en pasos de 90°' }, { id: 'adjust-image', label: 'Ajustar color', icon: <Image size={15}/>, detail: 'Brillo, contraste y saturación' }, { id: 'redact-image', label: 'Ocultar área', icon: <ShieldCheck size={15}/>, detail: 'Cubre con un bloque opaco' }, { id: 'remove-metadata', label: 'Quitar metadatos', icon: <File size={15}/>, detail: 'Elimina EXIF al exportar' }] : []),
-    ...(files.filter((file) => ['jpg','jpeg','png','webp','avif','tif','tiff'].includes(file.ext)).length >= 2 ? [{ id: 'create-collage', label: 'Crear collage', icon: <Layers3 size={15}/>, detail: 'Combina de 2 a 20 imágenes en una cuadrícula' }] : []),
+    ...(files.some((file) => IMAGE_TYPES.includes(file.ext)) ? [{ id: 'resize-image', label: 'Redimensionar', icon: <Image size={15}/>, detail: 'Ajusta ancho y alto' }, { id: 'crop-image', label: 'Recortar imagen', icon: <Scissors size={15}/>, detail: 'Define un área en píxeles' }, { id: 'rotate-image', label: 'Girar imagen', icon: <RefreshCw size={15}/>, detail: 'Rota en pasos de 90°' }, { id: 'adjust-image', label: 'Ajustar color', icon: <Image size={15}/>, detail: 'Brillo, contraste y saturación' }, { id: 'redact-image', label: 'Ocultar área', icon: <ShieldCheck size={15}/>, detail: 'Cubre con un bloque opaco' }, { id: 'remove-metadata', label: 'Quitar metadatos', icon: <File size={15}/>, detail: 'Elimina EXIF al exportar' }] : []),
+    ...(files.filter((file) => IMAGE_TYPES.includes(file.ext)).length >= 2 ? [{ id: 'create-collage', label: 'Crear collage', icon: <Layers3 size={15}/>, detail: 'Combina de 2 a 20 imágenes en una cuadrícula' }] : []),
     ...(audioFiles ? [{ id: 'normalize-audio', label: 'Normalizar', icon: <AudioLines size={15}/>, detail: 'Iguala el volumen' }, { id: 'volume-audio', label: 'Volumen', icon: <AudioLines size={15}/>, detail: 'Ajusta el nivel de salida' }, { id: 'fade-audio', label: 'Fundido', icon: <AudioLines size={15}/>, detail: 'Suaviza inicio y final' }, { id: 'metadata-media', label: 'Metadatos audio', icon: <File size={15}/>, detail: 'Edita título, artista y álbum' }] : []),
     ...(audioFiles ? [{ id: 'trim-audio', label: 'Recortar audio', icon: <Scissors size={15}/>, detail: 'Guarda un fragmento' }, { id: 'mono-audio', label: 'Canal mono', icon: <AudioLines size={15}/>, detail: 'Convierte a un canal' }, { id: 'speed-audio', label: 'Velocidad audio', icon: <Gauge size={15}/>, detail: 'Cambia el ritmo' }] : []),
     ...(videoFiles ? [{ id: 'trim-video', label: 'Recortar video', icon: <Scissors size={15}/>, detail: 'Ajusta la duración' }, { id: 'crop-video', label: 'Recortar encuadre', icon: <Image size={15}/>, detail: 'Corta por coordenadas' }, { id: 'mute-video', label: 'Quitar audio', icon: <AudioLines size={15}/>, detail: 'Exporta el video sin sonido' }, { id: 'speed-video', label: 'Velocidad', icon: <Gauge size={15}/>, detail: 'Cambia el ritmo' }, { id: 'extract-audio', label: 'Extraer audio', icon: <FileAudio size={15}/>, detail: 'Guarda solo el audio' }, { id: 'snapshot-video', label: 'Fotograma', icon: <Image size={15}/>, detail: 'Guarda un cuadro como PNG' }, { id: 'metadata-media', label: 'Metadatos video', icon: <File size={15}/>, detail: 'Añade título y comentario' }, { id: 'split-video', label: 'Dividir video', icon: <Scissors size={15}/>, detail: 'Divide en partes iguales' }, ...(operationFiles.length > 1 ? [{ id: 'join-video', label: 'Unir videos', icon: <Layers3 size={15}/>, detail: 'Combina los videos seleccionados' }] : [])] : []),
@@ -368,7 +397,7 @@ function FilesPage({ settings, onToast, quickPaths = [] }) {
         {operation === 'create-collage' && <><div className="option-fields"><label>Columnas<input type="number" min="1" max="5" value={options.columns} onChange={(event) => setOptions({ ...options, columns: Number(event.target.value) })}/></label><label>Separación · px<input type="number" min="0" max="96" value={options.gap} onChange={(event) => setOptions({ ...options, gap: Number(event.target.value) })}/></label></div><div className="option-fields"><label>Ancho por cuadro<input type="number" min="160" max="1600" value={options.cellWidth} onChange={(event) => setOptions({ ...options, cellWidth: Number(event.target.value) })}/></label><label>Alto por cuadro<input type="number" min="160" max="1600" value={options.cellHeight} onChange={(event) => setOptions({ ...options, cellHeight: Number(event.target.value) })}/></label></div><label className="range-field">Color de fondo<input type="color" value={options.background} onChange={(event) => setOptions({ ...options, background: event.target.value })}/><small>Se usarán las primeras 20 imágenes compatibles.</small></label></>}
         {['rotate-image','rotate-pdf'].includes(operation) && <label className="range-field">Rotación <select value={options.rotation} onChange={(event) => setOptions({ ...options, rotation: Number(event.target.value) })}><option value="90">90° a la derecha</option><option value="180">180°</option><option value="270">90° a la izquierda</option></select></label>}
         {operation === 'snapshot-video' && <label className="range-field">Momento del fotograma<input value={options.timestamp} onChange={(event) => setOptions({ ...options, timestamp: event.target.value })} placeholder="00:00:01"/></label>}
-        {operation === 'optimize' && <label className="range-field">{files.some((file) => ['jpg','jpeg','png','webp','avif','tif','tiff'].includes(file.ext)) ? 'Calidad de imagen' : videoFiles ? 'Compresión de video' : 'Calidad de audio'} <b>{options.quality}%</b><input type="range" min="55" max="95" step="1" value={options.quality} onChange={(event) => setOptions({ ...options, quality: Number(event.target.value), crf: Math.round(35 - Number(event.target.value) * 0.2), bitrate: `${Math.round(64 + Number(event.target.value) * 1.3)}k` })}/></label>}
+        {operation === 'optimize' && <label className="range-field">{files.some((file) => IMAGE_TYPES.includes(file.ext)) ? 'Calidad de imagen' : videoFiles ? 'Compresión de video' : 'Calidad de audio'} <b>{options.quality}%</b><input type="range" min="55" max="95" step="1" value={options.quality} onChange={(event) => setOptions({ ...options, quality: Number(event.target.value), crf: Math.round(35 - Number(event.target.value) * 0.2), bitrate: `${Math.round(64 + Number(event.target.value) * 1.3)}k` })}/></label>}
         <div className="panel-summary"><div className="summary-icon"><Zap size={15}/></div><span>{operation !== 'convert' && operationFiles.length < files.length ? <>Se procesarán <b>{operationFiles.length} de {files.length} archivos compatibles.</b></> : operation === 'convert' ? <>Conversión local <b>sin subir tus archivos</b></> : <>El original queda intacto. <b>Se crea una copia nueva.</b></>}</span></div>
         {folderTruncated && <p className="quick-limit-warning">El análisis se limitó a 5.000 elementos. Comprimir la carpeta está desactivado para evitar un ZIP incompleto.</p>}
         <button className="primary-button convert-button" onClick={busy ? () => window.dial.cancel(jobId) : start} disabled={!operationFiles.length || (!busy && operation === 'join-video' && operationFiles.length < 2) || (!busy && operation === 'create-zip' && folderTruncated) || (!busy && operation === 'convert' && !format) || (!busy && operation === 'organize-pdf' && !options.pageOrder.trim())}>{busy ? <><span className="button-spinner"/> Cancelar trabajo</> : <><WandSparkles size={16}/> {operation === 'convert' ? 'Convertir archivos' : 'Aplicar herramienta'}<ArrowRight size={15}/></>}</button>
@@ -465,7 +494,7 @@ function SettingsPage({ settings, setSettings, dataPath, sync, onToast, refresh 
 }
 
 function category(ext) {
-  if (['jpg', 'jpeg', 'png', 'webp', 'avif', 'tif', 'tiff', 'gif'].includes(ext)) return 'Imagen';
+  if (IMAGE_TYPES.includes(ext)) return 'Imagen';
   if (['mp4', 'mov', 'mkv', 'webm', 'avi', 'wmv'].includes(ext)) return 'Video';
   if (['mp3', 'm4a', 'wav', 'flac', 'ogg', 'opus', 'aiff', 'wma'].includes(ext)) return 'Audio';
   if (['srt', 'vtt'].includes(ext)) return 'Subtítulos';
@@ -478,4 +507,6 @@ function fileIcon(ext) {
   return group === 'Imagen' ? <FileImage size={17}/> : group === 'Video' ? <FileVideo size={17}/> : group === 'Audio' ? <FileAudio size={17}/> : group === 'Archivos' ? <FileArchive size={17}/> : group === 'Subtítulos' ? <FileText size={17}/> : ['csv', 'xlsx'].includes(ext) ? <FileSpreadsheet size={17}/> : <FileText size={17}/>;
 }
 
-createRoot(document.getElementById('root')).render(<App/>);
+const overlayWindow = new URLSearchParams(window.location.search).get('overlay') === '1';
+if (overlayWindow) document.body.classList.add('dial-overlay-window');
+createRoot(document.getElementById('root')).render(overlayWindow ? <QuickOverlayWindow/> : <App/>);

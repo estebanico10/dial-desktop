@@ -1,9 +1,11 @@
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, shell } = require('electron');
+const { spawn } = require('node:child_process');
 const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { convertBatch, cancelJob, supportedInputs, probeMedia, previewFrame, previewWaveform } = require('./media.cjs');
 const { LocalRepository } = require('./repository.cjs');
+const devServerUrl = process.env.DIAL_DEV_SERVER_URL || 'http://127.0.0.1:5173';
 
 const defaults = {
   appearance: 'dark', outputFolder: '', keepOriginal: true,
@@ -12,36 +14,139 @@ const defaults = {
   remoteUrl: '', remoteDatabase: '', remoteUsername: '', remotePassword: '',
 };
 let mainWindow;
+let quickWindow;
 let repo;
 let settingsFile;
 let settings = { ...defaults };
 let quickMode = false;
 let quickShortcutRegistered = false;
+let quitting = false;
 let pendingQuickPaths = [];
+let quickRestoreMain = false;
+let quickDragActive = false;
+let quickDragCloseTimer;
+let shiftDragMonitor;
 let updaterStatus = { state: 'idle', version: app.getVersion() };
 const allowedExtensions = new Set(supportedInputs());
 const instanceLock = app.requestSingleInstanceLock();
 if (!instanceLock) app.quit();
 
-function quickOpen(paths = []) {
+function quickOpen(paths = [], { fromDrag = false } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  if (!quickWindow || quickWindow.isDestroyed()) createQuickWindow();
+  if (!quickMode) quickRestoreMain = Boolean(mainWindow?.isVisible());
+  if (quickDragCloseTimer) clearTimeout(quickDragCloseTimer);
   quickMode = true;
-  mainWindow.setSize(1080, 800);
-  mainWindow.center();
-  mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
-  mainWindow.show();
-  mainWindow.focus();
+  quickDragActive = fromDrag;
   pendingQuickPaths = [...new Set(paths.filter((item) => typeof item === 'string'))];
-  if (!mainWindow.webContents.isLoading()) mainWindow.webContents.send('quick:open', pendingQuickPaths);
+  const cursor = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursor);
+  const bounds = display.workArea;
+  const width = 620; const height = 620;
+  quickWindow.setBounds({
+    x: Math.max(bounds.x, Math.min(cursor.x - Math.round(width / 2), bounds.x + bounds.width - width)),
+    y: Math.max(bounds.y, Math.min(cursor.y - Math.round(height / 2), bounds.y + bounds.height - height)),
+    width, height,
+  });
+  quickWindow.setAlwaysOnTop(true, 'screen-saver');
+  quickWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+  quickWindow.show();
+  quickWindow.focus();
+  if (!quickWindow.webContents.isLoading()) quickWindow.webContents.send('quick:open', pendingQuickPaths);
 }
 
-function closeQuick() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+function closeQuick({ restoreMain = true } = {}) {
   quickMode = false;
-  mainWindow.setAlwaysOnTop(false);
-  mainWindow.setSize(1440, 930);
-  mainWindow.center();
-  mainWindow.webContents.send('quick:close');
+  quickDragActive = false;
+  if (quickDragCloseTimer) clearTimeout(quickDragCloseTimer);
+  if (quickWindow && !quickWindow.isDestroyed()) quickWindow.hide();
+  if (restoreMain && quickRestoreMain && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  quickRestoreMain = false;
+}
+
+function startShiftDragMonitor() {
+  if (process.platform !== 'win32' || shiftDragMonitor) return;
+  const monitorScript = String.raw`
+$source = @'
+using System;
+using System.Runtime.InteropServices;
+public static class DialDragInput {
+  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X; public int Y; }
+  [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+  [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
+  public static bool Down(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; }
+  public static Point Cursor() { Point point; GetCursorPos(out point); return point; }
+}
+'@
+Add-Type -TypeDefinition $source
+$tracking = $false
+$started = $false
+$originX = 0
+$originY = 0
+while ($true) {
+  $left = [DialDragInput]::Down(1)
+  $shift = [DialDragInput]::Down(16)
+  if ($left -and $shift -and -not $tracking) {
+    $point = [DialDragInput]::Cursor()
+    $originX = $point.X
+    $originY = $point.Y
+    $tracking = $true
+    $started = $false
+  }
+  if ($tracking -and $left -and $shift -and -not $started) {
+    $point = [DialDragInput]::Cursor()
+    $dx = $point.X - $originX
+    $dy = $point.Y - $originY
+    if (($dx * $dx + $dy * $dy) -ge 256) {
+      [Console]::WriteLine("START|$($point.X)|$($point.Y)")
+      [Console]::Out.Flush()
+      $started = $true
+    }
+  }
+  if ($tracking -and (-not $left -or -not $shift)) {
+    if ($started) { [Console]::WriteLine('END'); [Console]::Out.Flush() }
+    $tracking = $false
+    $started = $false
+  }
+  Start-Sleep -Milliseconds 16
+}`;
+  shiftDragMonitor = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', monitorScript], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  let output = '';
+  shiftDragMonitor.stdout.setEncoding('utf8');
+  shiftDragMonitor.stdout.on('data', (chunk) => {
+    output += chunk;
+    const lines = output.split(/\r?\n/);
+    output = lines.pop() || '';
+    for (const line of lines) {
+      if (line.startsWith('START|') && !quickMode) quickOpen([], { fromDrag: true });
+      else if (line === 'END' && quickDragActive) {
+        quickDragCloseTimer = setTimeout(() => {
+          if (quickDragActive) closeQuick();
+        }, 1400);
+      }
+    }
+  });
+  shiftDragMonitor.on('error', () => { shiftDragMonitor = null; });
+  shiftDragMonitor.on('exit', () => { shiftDragMonitor = null; });
+}
+
+function createQuickWindow() {
+  quickWindow = new BrowserWindow({
+    width: 620, height: 620, minWidth: 540, minHeight: 540,
+    show: false, frame: false, transparent: true, resizable: false,
+    hasShadow: false, skipTaskbar: true, alwaysOnTop: true,
+    backgroundColor: '#00000000', title: 'DIAL rápido',
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  if (app.isPackaged) quickWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { query: { overlay: '1' } });
+  else quickWindow.loadURL(`${devServerUrl}/?overlay=1`);
+  quickWindow.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith('https://')) shell.openExternal(url); return { action: 'deny' }; });
+  quickWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); closeQuick(); } });
+  quickWindow.on('closed', () => { quickWindow = null; quickMode = false; });
 }
 
 function publishUpdaterStatus(status) {
@@ -93,14 +198,18 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   if (app.isPackaged) mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  else mainWindow.loadURL('http://127.0.0.1:5173');
+  else mainWindow.loadURL(devServerUrl);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) shell.openExternal(url);
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const local = app.isPackaged ? url.startsWith('file:') : url.startsWith('http://127.0.0.1:5173');
+    const local = app.isPackaged ? url.startsWith('file:') : url.startsWith(devServerUrl);
     if (!local) event.preventDefault();
+  });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (quickWindow && !quickWindow.isDestroyed()) quickWindow.destroy();
   });
 }
 
@@ -117,6 +226,7 @@ app.whenReady().then(async () => {
   await repo.init();
   configureUpdater();
   if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  startShiftDragMonitor();
   if (app.isPackaged) autoUpdater.checkForUpdates().catch((error) => publishUpdaterStatus({ state: 'error', message: error.message }));
   const launchPaths = receivedPaths(process.argv).filter((item) => path.resolve(item).toLowerCase() !== path.resolve(process.execPath).toLowerCase());
   if (launchPaths.length) quickOpen(launchPaths);
@@ -128,7 +238,7 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => { quitting = true; globalShortcut.unregisterAll(); if (shiftDragMonitor) shiftDragMonitor.kill(); });
 
 ipcMain.handle('files:choose', async () => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Archivos admitidos', extensions: supportedInputs() }] });
@@ -193,9 +303,21 @@ ipcMain.handle('folder:choose-for-files', async () => {
   return result.canceled ? [] : result.filePaths;
 });
 ipcMain.handle('quick:close', () => closeQuick());
+ipcMain.handle('quick:drop-received', () => {
+  quickDragActive = false;
+  if (quickDragCloseTimer) clearTimeout(quickDragCloseTimer);
+  return true;
+});
 ipcMain.handle('quick:open', () => quickOpen());
 ipcMain.handle('quick:state', () => ({ active: quickMode, paths: pendingQuickPaths }));
 ipcMain.handle('quick:shortcut-status', () => quickShortcutRegistered);
+ipcMain.handle('quick:open-files', (_event, paths = []) => {
+  closeQuick({ restoreMain: false });
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  mainWindow.show(); mainWindow.focus();
+  pendingQuickPaths = [...new Set(paths.filter((item) => typeof item === 'string'))];
+  if (!mainWindow.webContents.isLoading()) mainWindow.webContents.send('files:open', pendingQuickPaths);
+});
 ipcMain.handle('convert:run', async (_event, options) => {
   const { jobId } = options;
   if (jobId) await repo.updateJob(jobId, { status: 'processing', progress: 0, error: '' });

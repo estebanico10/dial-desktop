@@ -16,7 +16,7 @@
 
 ### Convertir y preparar archivos
 
-- Convertir imágenes entre PNG, JPEG, WebP, AVIF y TIFF, o exportarlas a PDF; redimensionar, girar, recortar y ajustar color.
+- Convertir imágenes entre PNG, JPEG, WebP, AVIF, TIFF y GIF, y abrir BMP y SVG para convertirlos a formatos rasterizados o PDF; redimensionar, girar, recortar y ajustar color. Los GIF se procesan como imagen fija desde su primer fotograma.
 - Crear collages de 2 a 20 imágenes con columnas, separación, tamaño de cuadros y fondo configurables.
 - Convertir audio y video con FFmpeg incluido: cambiar formato o velocidad, recortar, normalizar, ajustar volumen, aplicar fundidos, quitar audio, capturar fotogramas y dividir o unir clips compatibles.
 - Organizar, unir o dividir PDF. El organizador muestra miniaturas para seleccionar y reordenar páginas antes de exportar.
@@ -31,12 +31,15 @@ Las herramientas disponibles dependen del tipo de archivo. No se ofrecen los 275
 - Mostrar preguntas condicionales; las respuestas exportadas incluyen los campos que estaban visibles.
 - Guardar formularios, respuestas y adjuntos en este equipo, y exportar respuestas a CSV o XLSX.
 
-### Acceso rápido en Windows
+### Menú flotante en Windows
 
-- Abrir el modo rápido con **Ctrl + Shift + D**, o elegir archivos y carpetas desde la aplicación.
-- Arrastrar y soltar, analizar hasta 5.000 archivos y ver un resumen por tipo.
-- Crear ZIP conservando las rutas, comprimir medios compatibles, abrir las herramientas completas o revelar un resultado en el Explorador.
+- Abrir una rueda translúcida sobre otras ventanas con **Ctrl + Shift + D**; la ventana principal se oculta mientras el widget está activo y se restaura al cerrarlo.
+- Mantener **Shift** mientras arrastras un archivo desde el Explorador para invocar la rueda cerca del cursor; soltarlo sobre el widget para analizarlo. Si no lo sueltas en la rueda, esta se cierra sola.
+- Arrastrar archivos al centro, elegir una conversión o una acción rápida y abrir las herramientas completas para ajustar detalles.
+- Crear ZIP conservando rutas, comprimir medios compatibles o abrir el resultado en el Explorador.
 - Usar el menú contextual **Analizar con DIAL** para abrir archivos o carpetas con la aplicación.
+
+El botón **?** dentro de DIAL abre un tutorial, el catálogo de herramientas y la lista de formatos admitidos.
 
 ## Descargas y actualizaciones
 

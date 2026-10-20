@@ -42,9 +42,12 @@ contextBridge.exposeInMainWorld('dial', {
   openExternal: (url) => ipcRenderer.invoke('external:open', url),
   appInfo: () => ipcRenderer.invoke('app:info'),
   quickClose: () => ipcRenderer.invoke('quick:close'),
+  quickDropReceived: () => ipcRenderer.invoke('quick:drop-received'),
   quickOpen: () => ipcRenderer.invoke('quick:open'),
   quickState: () => ipcRenderer.invoke('quick:state'),
   quickShortcutStatus: () => ipcRenderer.invoke('quick:shortcut-status'),
+  openFiles: (paths) => ipcRenderer.invoke('quick:open-files', paths),
+  onFilesOpen: (listener) => { const handler = (_event, paths) => listener(paths); ipcRenderer.on('files:open', handler); return () => ipcRenderer.removeListener('files:open', handler); },
   onQuickOpen: (listener) => { const handler = (_event, paths) => listener(paths); ipcRenderer.on('quick:open', handler); return () => ipcRenderer.removeListener('quick:open', handler); },
   onQuickClose: (listener) => { const handler = () => listener(); ipcRenderer.on('quick:close', handler); return () => ipcRenderer.removeListener('quick:close', handler); },
 });
